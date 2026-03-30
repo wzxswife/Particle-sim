@@ -1,109 +1,106 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-
-# 图片保存路径
-pic_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'Pic')
-os.makedirs(pic_dir, exist_ok=True)
-import os
-
-# 图片保存路径
-pic_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'Pic')
-os.makedirs(pic_dir, exist_ok=True)
 
 # --- 参数设置 ---
-L = 100              # 区域大小 [cite: 4]
-N_grid = 20          # 网格数量 (20x20) [cite: 4]
-dx = L / N_grid      # 网格间距 (5.0) [cite: 17, 35]
-N_particles = 40000  # 粒子总数 [cite: 4]
+L = 100  # 区域大小
+N_grid = 20  # 网格数量 (20x20)
+dx = L / N_grid  # 网格间距 (5.0)
+N_particles = 40000  # 粒子总数
 
-# 1. 生成均匀分布的随机粒子坐标 [cite: 8, 16]
-np.random.seed(42) # 固定随机种子以保证结果可复现
+np.random.seed(42)  # 固定随机种子以保证结果可复现
 x_p = np.random.uniform(0, L, N_particles)
 y_p = np.random.uniform(0, L, N_particles)
 
 # --- 第一题：粒子数密度统计 ---
 
+
 def calculate_density_ngp(x, y, n_grid, delta_x):
-    """最近网格法 (Nearest Grid Point) """
+    """最近网格法 (Nearest Grid Point)"""
     density = np.zeros((n_grid + 1, n_grid + 1))
-    # 计算最近的网格点索引 [cite: 18]
+    # 计算最近的网格点索引
     i = np.round(x / delta_x).astype(int)
     j = np.round(y / delta_x).astype(int)
-    
+
     # 统计落在每个网格点上的粒子数
     for k in range(len(x)):
         density[j[k], i[k]] += 1
     return density
 
+
 def calculate_density_first_order(x, y, n_grid, delta_x):
-    """一阶权重法 (Area Weighting / Bilinear) """
+    """一阶权重法 (Area Weighting / Bilinear)"""
     density = np.zeros((n_grid + 1, n_grid + 1))
-    
-    # 计算左下角网格索引 [cite: 17]
+
+    # 计算左下角网格索引
     i = (x / delta_x).astype(int)
     j = (y / delta_x).astype(int)
-    
-    # 计算权重因子 [cite: 42, 43, 44]
+
+    # 计算权重因子
     dx1 = (x / delta_x) - i
     dy1 = (y / delta_x) - j
-    
+
     # 分配粒子到四个相邻网格点
     for k in range(len(x)):
         density[j[k], i[k]] += (1 - dx1[k]) * (1 - dy1[k])
-        density[j[k], i[k]+1] += dx1[k] * (1 - dy1[k])
-        density[j[k]+1, i[k]] += (1 - dx1[k]) * dy1[k]
-        density[j[k]+1, i[k]+1] += dx1[k] * dy1[k]
+        density[j[k], i[k] + 1] += dx1[k] * (1 - dy1[k])
+        density[j[k] + 1, i[k]] += (1 - dx1[k]) * dy1[k]
+        density[j[k] + 1, i[k] + 1] += dx1[k] * dy1[k]
     return density
+
 
 # 计算密度
 rho_ngp = calculate_density_ngp(x_p, y_p, N_grid, dx)
 rho_first = calculate_density_first_order(x_p, y_p, N_grid, dx)
 
-# 绘图 [cite: 11]
+# 绘图
 plt.figure(figsize=(12, 5))
 
 plt.subplot(1, 2, 1)
-plt.imshow(rho_ngp, origin='lower', extent=[0, L, 0, L], cmap='Blues')
-plt.colorbar(label='n')
-plt.title('Nearest Grid Point (NGP)') # 最近网格法
-plt.xlabel('x')
-plt.ylabel('y')
+plt.imshow(rho_ngp, origin="lower", extent=[0, L, 0, L], cmap="Blues")
+plt.colorbar(label="n")
+plt.title("Nearest Grid Point (NGP)")  # 最近网格法
+plt.xlabel("x")
+plt.ylabel("y")
 
 plt.subplot(1, 2, 2)
-plt.imshow(rho_first, origin='lower', extent=[0, L, 0, L], cmap='Blues')
-plt.colorbar(label='n')
-plt.title('First-order Weighting') # 一阶权重法
-plt.xlabel('x')
-plt.ylabel('y')
+plt.imshow(rho_first, origin="lower", extent=[0, L, 0, L], cmap="Blues")
+plt.colorbar(label="n")
+plt.title("First-order Weighting")  # 一阶权重法
+plt.xlabel("x")
+plt.ylabel("y")
 
 plt.tight_layout()
-plt.savefig(os.path.join(pic_dir, 'density_plot.png'), dpi=150)
-print(f"第一题图片已保存为 {os.path.join(pic_dir, 'density_plot.png')}")
+pic_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Pic")
+os.makedirs(pic_dir, exist_ok=True)
+plt.savefig(os.path.join(pic_dir, "density_plot.png"), dpi=300)
+print(f"第一题图片已保存为 {pic_dir}/density_plot.png")
 
-# --- 第二题：电场双线性插值 --- [cite: 21, 31]
+# --- 第二题：电场双线性插值 ---
+
 
 def get_field_at_pos(x, y, delta_x):
-    """双线性插值求电场 [cite: 31, 41]"""
-    # 1. 找到粒子所在的网格左下角索引 [cite: 29, 35]
+    """双线性插值求电场"""
+    # 1. 找到粒子所在的网格左下角索引
     i = int(x / delta_x)
     j = int(y / delta_x)
-    
-    # 2. 计算相对坐标权重 (0~1) [cite: 42]
+
+    # 2. 计算相对坐标权重 (0~1)
     u = (x / delta_x) - i
     v = (y / delta_x) - j
-    
-    # 3. 计算四个网格点的场值 Ex = i + j 
+
+    # 3. 计算四个网格点的场值 Ex = i + j
     e00 = i + j
     e10 = (i + 1) + j
     e01 = i + (j + 1)
     e11 = (i + 1) + (j + 1)
-    
-    # 4. 双线性插值公式 [cite: 44, 45]
-    ex = (1-u)*(1-v)*e00 + u*(1-v)*e10 + (1-u)*v*e01 + u*v*e11
+
+    # 4. 双线性插值公式
+    ex = (1 - u) * (1 - v) * e00 + u * (1 - v) * e10 + (1 - u) * v * e01 + u * v * e11
     return ex
 
-# 测试点 [cite: 21]
+
+# 测试点
 test_points = [(35.5, 45.6), (38.1, 58.8), (78.7, 65.7)]
 
 print("--- 第二题：电场插值结果 ---")
@@ -125,14 +122,24 @@ for i in range(X.shape[0]):
 
 # 绘制电场热力图
 plt.figure(figsize=(8, 6))
-plt.imshow(Ex, origin='lower', extent=[0, L, 0, L], cmap='RdBu_r', aspect='equal')
-plt.colorbar(label='Ex')
-plt.title('Electric Field Interpolation (Ex)')
-plt.xlabel('x')
-plt.ylabel('y')
+plt.imshow(Ex, origin="lower", extent=[0, L, 0, L], cmap="RdBu_r", aspect="equal")
+plt.colorbar(label="Ex")
+plt.title("Electric Field Interpolation (Ex)")
+plt.xlabel("x")
+plt.ylabel("y")
 
 # 标记测试点
 for px, py in test_points:
-    plt.plot(px, py, 'ko', markersize=8)
+    plt.plot(px, py, "ko", markersize=8)
     ex_val = get_field_at_pos(px, py, dx)
-    plt.annotate(f'Ex={ex_val:.1f}', (px, py), textcoords="offset points", xytext=(5, 5))
+    plt.annotate(
+        f"Ex={ex_val:.1f}",
+        (px, py),
+        textcoords="offset points",
+        xytext=(5, 5),
+        fontsize=8,
+    )
+
+plt.tight_layout()
+plt.savefig(os.path.join(pic_dir, "electric_field_plot.png"), dpi=300)
+print(f"第二题图片已保存为 {pic_dir}/electric_field_plot.png")
