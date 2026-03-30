@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 
 # --- 参数设置 ---
 L = 100  # 区域大小
-N_grid = 20  # 网格数量 (20x20)
+N_grid = 100  # 网格数量 (20x20)
 dx = L / N_grid  # 网格间距 (5.0)
-N_particles = 40000  # 粒子总数
+N_particles = 1000000  # 粒子总数
 
 np.random.seed(42)  # 固定随机种子以保证结果可复现
 x_p = np.random.uniform(0, L, N_particles)
@@ -80,7 +80,7 @@ print(f"第一题图片已保存为 {pic_dir}/density_plot.png")
 
 
 def get_field_at_pos(x, y, delta_x):
-    """双线性插值求电场"""
+    """一阶权重法（双线性插值）求电场 E = x + y²"""
     # 1. 找到粒子所在的网格左下角索引
     i = int(x / delta_x)
     j = int(y / delta_x)
@@ -89,24 +89,39 @@ def get_field_at_pos(x, y, delta_x):
     u = (x / delta_x) - i
     v = (y / delta_x) - j
 
-    # 3. 计算四个网格点的场值 Ex = i + j
-    e00 = i + j
-    e10 = (i + 1) + j
-    e01 = i + (j + 1)
-    e11 = (i + 1) + (j + 1)
+    # 3. 计算四个网格点的实际坐标
+    x00 = i * delta_x
+    y00 = j * delta_x
+    x10 = (i + 1) * delta_x
+    y10 = j * delta_x
+    x01 = i * delta_x
+    y01 = (j + 1) * delta_x
+    x11 = (i + 1) * delta_x
+    y11 = (j + 1) * delta_x
 
-    # 4. 双线性插值公式
+    # 4. 计算四个网格点的场值 E = x + y²
+    e00 = x00 + y00 ** 2
+    e10 = x10 + y10 ** 2
+    e01 = x01 + y01 ** 2
+    e11 = x11 + y11 ** 2
+
+    # 5. 双线性插值公式
     ex = (1 - u) * (1 - v) * e00 + u * (1 - v) * e10 + (1 - u) * v * e01 + u * v * e11
     return ex
 
 
 # 测试点
-test_points = [(35.5, 45.6), (38.1, 58.8), (78.7, 65.7)]
+test_points = [(7.8, 9.5)]
 
-print("--- 第二题：电场插值结果 ---")
+print("--- 第二题：电场插值结果 (E = x + y²) ---")
 for px, py in test_points:
     ex_val = get_field_at_pos(px, py, dx)
-    print(f"粒子位置 ({px}, {py}) : Ex = {ex_val:.2f}")
+    # 计算精确值用于对比
+    exact_val = px + py ** 2
+    print(f"粒子位置 ({px}, {py}) :")
+    print(f"  一阶权重法插值结果: E = {ex_val:.4f}")
+    print(f"  精确值 (E = x + y²): E = {exact_val:.4f}")
+    print(f"  误差: {abs(ex_val - exact_val):.4f}")
 
 # 绘制电场插值图
 # 创建网格用于绘制电场分布
