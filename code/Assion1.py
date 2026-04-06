@@ -59,14 +59,14 @@ plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
 plt.imshow(rho_ngp, origin="lower", extent=[0, L, 0, L], cmap="Blues")
 plt.colorbar(label="n")
-plt.title("Nearest Grid Point (NGP)")  # 最近网格法
+plt.title("Nearest Grid Point (NGP)")
 plt.xlabel("x")
 plt.ylabel("y")
 
 plt.subplot(1, 2, 2)
 plt.imshow(rho_first, origin="lower", extent=[0, L, 0, L], cmap="Blues")
 plt.colorbar(label="n")
-plt.title("First-order Weighting")  # 一阶权重法
+plt.title("First-order Weighting")
 plt.xlabel("x")
 plt.ylabel("y")
 
