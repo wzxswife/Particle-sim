@@ -1,4 +1,13 @@
-# 一维电场数值计算方法比较分析
+---
+marp: true
+---
+
+# 一维电场数值计算方法比较分析  
+</br>
+赵世娟</br>   
+2026年4月16日
+
+---
 
 ## 1. 问题背景
 
@@ -10,33 +19,46 @@
 
 真空介电常数取 $\varepsilon_0 = 1.0$。
 
+**计算参数：**
+- 网格点数：$N = 101$
+- 网格间距：$\Delta x = 1.0$
+
 ---
 
-## 2. 电荷沉积：一阶权重法 (CIC)
+## 2. 电荷分布：一阶权重法 (CIC)
 
 ### 2.1 方法原理
 
 将连续分布的电荷投影到离散网格点上。对于一维情况，点电荷 $q$ 位于位置 $x$，网格间距为 $\Delta x$，权重分配如下：
 
 $$
-w_{i} = 1 - \frac{x - i\Delta x}{\Delta x}, \quad w_{i+1} = \frac{x - i\Delta x}{\Delta x}
+w_{\text{left}} = 1 - \frac{x - i\Delta x}{\Delta x}, \quad w_{\text{right}} = \frac{x - i\Delta x}{\Delta x}
 $$
 
 其中 $i = \lfloor x/\Delta x \rfloor$ 为左侧网格索引。
 
+---
+
 ### 2.2 代码实现
 
 ```python
-def deposit_charge(q, x_pos):
-    """一维一阶权重法 (CIC) 将点电荷分配到相邻网格点上"""
-    i = int(np.floor(x_pos / dx))          # 左侧网格索引
-    w_left = 1.0 - (x_pos - i*dx) / dx     # 左侧权重
-    w_right = (x_pos - i*dx) / dx          # 右侧权重
+def deposit_charge(q, x_pos, dx, N):
+
+    Q = np.zeros(N)
+    i = int(np.floor(x_pos / dx))
+    if i < 0 or i >= N-1:
+        return Q
+    w_left = 1.0 - (x_pos - i*dx) / dx
+    w_right = (x_pos - i*dx) / dx
     Q[i] += q * w_left
     Q[i+1] += q * w_right
+    return Q
 ```
 
-沉积后，网格电荷量 $Q$ 将用于求解泊松方程。
+---
+
+### 2.3 结果展示
+![fig1](../Pic/charge_distribution.png)
 
 ---
 
@@ -66,22 +88,56 @@ $$
 
 ### 4.1 方法原理
 
-构建三对角矩阵求解线性方程组 $\mathbf{A}\phi = \mathbf{rhs}$：
+使用 Thomas 算法（追赶法）求解三对角矩阵方程 $\mathbf{A}\phi = \mathbf{b}$：
 
 - 主对角线元素：$-2$
 - 次对角线元素：$+1$
 - 边界条件：$\phi(0) = \phi(100) = 0$
 
-### 4.2 电场计算
+---
 
-电场通过对电势进行中心差分得到：
+### 4.2 Thomas 算法步骤
 
-$$
-E_i = -\frac{\phi_{i+1} - \phi_{i-1}}{2\Delta x}
-$$
+1. **向前消元**：计算中间变量 $w_i$ 和 $g_i$
+   $$
+   w_i = \frac{c_i}{b_i - a_i w_{i-1}}, \quad g_i = \frac{d_i - a_i g_{i-1}}{b_i - a_i w_{i-1}}
+   $$
 
-边界点使用前向/后向差分。
+2. **向后回代**：求解内部点电势
+   $$
+   \phi_i = g_i - w_i \phi_{i+1}
+   $$
+---
 
+### 4.3 代码实现
+
+```python
+def poisson_direct(rho, dx, phi0, phiN):
+    N = len(rho)
+    d = -dx**2 * rho.copy().astype(float)
+    d[1]   -= phi0    # 边界条件修正（内部点 1..N-2）
+    d[N-2] -= phiN
+    a = np.ones(N-2)      # 下对角线
+    b = -2 * np.ones(N-2) # 主对角线
+    c = np.ones(N-2)      # 上对角线
+    w = np.zeros(N-2)    # Thomas 算法
+    g = np.zeros(N-2)
+    w[0] = c[0] / b[0]    # 向前消元
+    g[0] = d[1] / b[0]
+    for i in range(1, N-2):
+        denom = b[i] - a[i] * w[i-1]
+        w[i] = c[i] / denom
+        g[i] = (d[i+1] - a[i] * g[i-1]) / denom
+    phi_int = np.zeros(N-2)    # 向后回代
+    phi_int[-1] = g[-1]
+    for i in range(N-4, -1, -1):
+        phi_int[i] = g[i] - w[i] * phi_int[i+1]
+    phi = np.zeros(N)    # 组合边界值
+    phi[0] = phi0
+    phi[1:-1] = phi_int
+    phi[-1] = phiN
+    return phi
+```
 ---
 
 ## 5. 方法二：FFT法（周期边界条件）
@@ -102,7 +158,56 @@ $$
 
 ---
 
-## 6. 解析解：库仑定律
+### 5.3 代码实现
+
+```python
+def poisson_fft_periodic(rho, dx):
+
+    N = len(rho)
+    L = N * dx
+    
+    rho_hat = np.fft.fft(rho)
+    k = 2 * np.pi * np.fft.fftfreq(N, d=dx)
+    phi_hat = np.zeros(N, dtype=complex)
+    # n=0 分量置零（平均电势为零）
+    phi_hat[0] = 0.0
+    # 非零波数求解: φ_k = -ρ_k / k²
+    mask = (k != 0)
+    phi_hat[mask] = -rho_hat[mask] / (k[mask]**2)
+    # 逆变换取实部
+    phi = np.fft.ifft(phi_hat).real
+    return phi
+```
+
+---
+
+### 5.4 结果展示
+![fig2](../Pic/potential_distribution.png)
+
+---
+
+## 6 电场结果
+### 6.1 电场计算
+
+```python
+def compute_electric_field(phi, dx):
+    """通过电势计算电场: E = -dφ/dx"""
+    N = len(phi)
+    E = np.zeros(N)
+    
+    # 中心差分（内部点）
+    E[1:-1] = -(phi[2:] - phi[:-2]) / (2*dx)
+    
+    # 边界点采用前向/后向差分
+    E[0] = -(phi[1] - phi[0]) / dx
+    E[-1] = -(phi[-1] - phi[-2]) / dx
+    
+    return E
+```
+
+<!-- ## 6. 解析解：库仑定律
+
+### 6.1 方法原理
 
 对于一维情况下的点电荷，电场可由库仑定律直接计算：
 
@@ -115,19 +220,36 @@ $$
 $$
 E(x) = \frac{q}{4\pi\varepsilon_0} \cdot \frac{r}{|r|^3 + \varepsilon}
 $$
+---
+
+### 6.2 代码实现
+
+```python
+def coulomb_field(x, q, x0, epsilon0=1.0):
+    """
+    点电荷 q 在位置 x0 处产生的电场（沿 x 方向）
+    
+    Args:
+        x: 观测点位置
+        q: 电荷量
+        x0: 电荷位置
+        epsilon0: 真空介电常数
+    
+    Returns:
+        E: 电场值
+    """
+    r = x - x0
+    return (q / (2.0 * epsilon0)) * np.sign(r)
+``` -->
 
 ---
 
-## 7. 误差分析结果
+### 6.2 结果展示
+![fig3](../Pic/electric_field_distribution.png)
 
-### 7.1 定量误差
+---
 
-| 方法 | 最大绝对误差 |
-|------|-------------|
-| 有限差分法 (Dirichlet) | $\approx 10^{-4}$ |
-| FFT法 (周期边界) | $\approx 10^{-4}$ |
-
-### 7.2 误差来源分析
+## 7 误差来源分析
 
 1. **有限差分法误差**：
    - 差分格式的截断误差（$O(\Delta x^2)$）
@@ -138,33 +260,22 @@ $$
    - 网格分辨率有限带来的aliasing误差
 
 3. **共同误差来源**：
-   - 电荷沉积的有限分辨率（CIC方法的固有误差）
+   - 电荷分布的有限分辨率
    - 电场计算中差分近似的离散化误差
 
----
+<!-- ---
 
-## 8. 代码结构
-
-```
-Assion2.py
-├── 参数设置 (L, N, dx, q1, q2, x1, x2, epsilon0)
-├── 电荷沉积 (deposit_charge)
-├── 方法1: 有限差分法
-│   ├── 构建三对角矩阵
-│   └── 计算电场 (中心差分)
-├── 方法2: FFT法
-│   ├── FFT变换
-│   ├── 求解傅里叶空间
-│   └── 逆FFT变换
-├── 库仑定律解析解 (coulomb_field)
-└── 绘图比较
-```
-
----
-
-## 9. 结论
+## 8. 结论
 
 两种数值方法均能较好地逼近解析解，误差在同一量级。选择哪种方法取决于具体应用场景：
 
-- **有限差分法**：适合非周期问题，边界条件处理灵活
-- **FFT法**：计算效率高，适合周期性问题，但需要满足周期边界假设
+| 方法 | 适用场景 |
+|------|---------|
+| **有限差分法** | 非周期问题，边界条件处理灵活 |
+| **FFT法** | 周期性问题，计算效率高 |
+
+代码已封装为独立函数，可在其他程序中复用：
+
+```python
+from Assion2 import deposit_charge, poisson_direct, poisson_fft_periodic, compute_electric_field
+``` -->
